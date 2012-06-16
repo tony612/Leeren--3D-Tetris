@@ -1,0 +1,601 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Leeren</title>
+		<meta charset="UTF-8" />
+		<script type="text/javascript" src="Three.js"></script>
+		<script type="text/javascript" src="Bird.js"></script>
+		<script type="text/javascript" src="Stats.js"></script>
+		<script type="text/javascript" src="Boid.js"></script>
+		<script type="text/javascript" src="jquery-1.7.1.min.js"></script>
+		<link rel="stylesheet" type="text/css" href="./custom.css"/>
+		<script type="text/javascript">
+		</script>
+	</head>
+	<body>
+		<script type="text/javascript" src="coffee-script.js"></script>
+		<div id="container" class="welcome"></div>
+		<h1 id="play" class="welcome">Play</h1>
+		<h1 class="play">Leeren</h1>
+		<div id="container" class="area play"></div>
+		<div id="score" class="area small play">
+			<div class="keybar">Score</div>
+			<div id="value0" class="valuebar"></div>
+		</div>
+		<div id="level" class="area small play">
+			<div class="keybar">Level</div>
+			<div id="value1" class="valuebar"></div>
+		</div>
+		<div id="cubesplayed" class="area small play">
+			<div class="keybar">Cubes Played</div>
+			<div id="value2" class="valuebar"></div>
+		</div>
+		<div id="highscore" class="area small play">
+			<div class="keybar">High Score</div>
+			<div id="value3" class="valuebar"></div>
+		</div>
+		<div id="pit" class="area small play" >
+			<div class="keybar">Pit</div>
+			<div id="value4" class="valuebar"></div>
+		</div>
+		<script type="text/coffeescript">
+
+# 游戏页面的变量
+[BeforeGame, BeingGame, Pause] = [0..2]
+
+PAGE = 0
+
+# Game类 用来控制游戏的一些初始化， 游戏循环，渲染的过程
+class Game
+	# 构造函数，一些参数的初始化
+	constructor: ->
+		@gameOver = false
+		@level = 1
+		@page = 0 #开始页面和游戏中的页面
+		@score = 0
+		@cubesplayed = 0
+		@highscore = 0
+		@SCREEN_WIDTH = window.innerWidth # 浏览器窗口的宽度
+		@SCREEN_HEIGHT = window.innerHeight # 浏览器窗口的高度
+		@SCREEN_WIDTH_HALF = @SCREEN_WIDTH / 2 # 宽度的一半
+		@SCREEN_HEIGHT_HALF = @SCREEN_HEIGHT / 2 # 高度的一半
+		@grid = 60 									# 一个格子的单位长度
+		@PLAY_HEIGHT = @grid * 10 					# 游戏区域的高度，十个格子
+		@PLAY_WIDTH = @grid * 10 					# 游戏区域的宽度
+		@camera = @scene = @renderer = null 		# 3D渲染的camera， scene， renderer
+		@birds = [] 								# 开始界面的鸟的数组
+		@boids = [] 								# 跟鸟飞行相关的
+		@aniInterval = null 						# 游戏循环的变量
+		clearInterval @aniInterval 					# 初始化时清除
+		@values = (0 for i in [0..4]) 				# 界面显示的几个数字，包括level，score等
+		@values[4] = "5*5*12"
+
+	# 初始化
+	init: ->			# initial before game
+		switch PAGE
+			# 开始界面的初始化
+			when 0
+				# 3D部分的初始化
+				@camera = new THREE.PerspectiveCamera 75, @SCREEN_WIDTH / @SCREEN_HEIGHT, 1, 10000
+				@scene = new THREE.Scene()
+				@scene.add @camera
+				@renderer = new THREE.CanvasRenderer()
+				# 视角的位置
+				@camera.position.z = 300
+				@renderer.setSize @SCREEN_WIDTH, @SCREEN_HEIGHT
+				# 在html中加入渲染
+				$('#container').append @renderer.domElement
+				# 200只鸟的初始化
+				for i in [0...200]
+					boid = new Boid()
+					boid.position.x = Math.random() * 400 - 200
+					boid.position.y = Math.random() * 400 - 200
+					boid.position.z = Math.random() * 400 - 200
+					boid.velocity.x = Math.random() * 2 - 1
+					boid.velocity.y = Math.random() * 2 - 1
+					boid.velocity.z = Math.random() * 2 - 1
+					boid.setAvoidWalls true
+					boid.setWorldSize 500, 500, 400
+					@boids.push boid
+
+					bird = new THREE.Mesh new Bird(), new THREE.MeshBasicMaterial({color:Math.random() * 0x000000})
+					bird.phase = Math.floor Math.random() * 62.83
+					bird.position = @boids[i].position
+					bird.doubleSided = true
+					@birds.push bird
+					@scene.add bird
+			# 游戏开始
+			when 1
+				# 纪录FPS(每秒刷新的次数)
+				@stats = new Stats
+				@stats.domElement.style.position = 'absolute'
+				@stats.domElement.style.left = '0px'
+				@stats.domElement.style.top = '0px'
+				$('#container.play').append @stats.domElement
+				# 加入stats
+				@scene.add @stats
+				@camera = @scene = @renderer = null
+				@scene = new THREE.Scene()
+				@camera = new THREE.PerspectiveCamera 45, @PLAY_WIDTH/@PLAY_HEIGHT, 0.1, 10000
+				# 加入camera
+				@scene.add @camera
+				@renderer = new THREE.WebGLRenderer()
+				@camera.position.z = 730
+				@renderer.setSize @PLAY_WIDTH, @PLAY_HEIGHT
+				$('#container.play').append @renderer.domElement
+				console.log "init page 1 done"
+				for i in [0..4]
+					$("#value#{i}").html @values[i]
+				$("#value1").html @level
+				# 创建井(pit)的对象
+				@pit = new Pit @scene, this
+				# 创建方块的对象及初始化
+				@block = new Block @scene, @pit, this
+				@block.init()
+				# 漫反射的光
+				ambientLight = new THREE.AmbientLight Math.random() * 0x10
+				@scene.add ambientLight
+
+				# 四个点光源
+				pointLight = new THREE.PointLight 0xFFFFFF
+				pointLight2 = new THREE.PointLight 0xFFFFFF
+				pointLight3 = new THREE.PointLight 0xFFFFFF
+				pointLight4 = new THREE.PointLight 0xFFFFFF
+				pointLight4.position.z = 500
+				pointLight3.position.x = 120
+				pointLight2.position.x = -120
+				pointLight.position.z = -330
+				@scene.add pointLight2
+				@scene.add pointLight
+				@scene.add pointLight3
+				@scene.add pointLight4
+			else console.log "init error"
+	# 游戏循环
+	animate: ->
+		
+		clearInterval @aniInterval
+		#window.requestAnimationFrame =>@animate
+		# 每10毫秒执行一次
+		@aniInterval = setInterval (=>
+			# 执行渲染
+			@render()
+			# stats刷新
+			@stats.update() if @page is 1
+		), 10
+		
+
+	render: ->
+		if PAUSE
+			return console.log "PAUSE"
+		switch @page
+			# 开始界面
+			when 0
+				# 对鸟飞行的一些处理
+				for i in [0...@boids.length]
+					boid = @boids[i]
+					boid.run @boids
+					bird = @birds[i]
+
+					color = bird.material.color
+					color.r = color.g = color.b = (500 + bird.position.z) / 500
+
+					bird.rotation.y = Math.atan2(-boid.velocity.z, boid.velocity.x)
+					bird.rotation.z = Math.asin(boid.velocity.y / boid.velocity.length())
+
+					bird.phase = (bird.phase + (Math.max(0, bird.rotation.z) + 0.1)) % 62.83
+					bird.geometry.vertices[5].y = bird.geometry.vertices[4].y = Math.sin(bird.phase) * 5
+				@renderer.render @scene, @camera
+			# 游戏中
+			when 1
+				# 调用renderer的渲染函数render
+				@renderer.render @scene, @camera
+# Pit类 井 5*5*12
+class Pit
+	# 构造函数
+	constructor: (@scene, @game)->
+		# 注意：虽然canvas时600*600的，由于3D视角等关系，井实际是300*300*720, 60为一格
+		@gird = 60
+		@width = 300
+		@height = 300
+		@depth = 720
+		@splitX = 5
+		@splitY = 5
+		@splitZ = 12
+		@material = []
+		@numPlayed = 0
+		@sides = {pz:false}
+		# 静止方块每一层的颜色
+		@zColors = [0x4433ff, 0x66ffff, 0xcc68EE, 0x666633, 0x66ff66, 0x9966ff, 0x00ff66, 0x66EE33, 0x003399, 0x330099, 0xFFA500, 0x99ff00, 0xee1289, 0x71C671, 0x00BFFF, 0x666633, 0x669966, 0x9966ff]
+		# 存放固定方块的数组
+		@stableBlocks = []
+		for i in [0...12]
+			# 二维数组初始化
+			@stableBlocks.push []
+		# 保存将要被消去的方块的层数的数组
+		@removingLayer = []
+		# 井的那个长方体
+		@cube = new THREE.Mesh(new THREE.CubeGeometry(@width, @height, @depth, @splitX, @splitY, @splitZ, @material, @sides), new THREE.MeshBasicMaterial({color:0xFFFFFF, wireframe:true, shading:THREE.SmoothShading, wireframeLinewidth: 2,}))
+		@scene.add @cube
+		# 井的每个格子的状态，空或被固定方块占据
+		@state = {empty:0, stable:1}
+		# 每一层固定方块的个数，从底部到上部
+		@numLayer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+		# 保存井中每个点的状态，12*5*5的三维数组
+		@points = []
+		for i in [0...12]
+			tmp1 = []
+			for j in [0...5]
+				tmp = []
+				for k in [0...5]
+					tmp.push @state.empty
+				tmp1.push tmp
+			@points.push tmp1
+		# 初始化井中每个格子的状态
+		@points_empty = [
+			[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]
+		]
+
+	# 添加固定方块，一个一个的添加
+	addStableBlock: (point)->
+		grid = 60
+		# 颜色的选择
+		col = @zColors[11 - point[2]]
+		mesh = THREE.SceneUtils.createMultiMaterialObject new THREE.CubeGeometry(grid, grid, grid), [new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}), new THREE.MeshBasicMaterial({color: col})]
+		mesh.position.x = point[0] * grid
+		mesh.position.y = point[1] * grid
+		mesh.position.z = 330 - point[2] * grid
+		@scene.add mesh
+		@stableBlocks[11 - point[2]].push mesh
+		# 把对应的位置置为对应状态
+		@points[11 - point[2]][point[0] + 2][point[1] + 2] = @state.stabled
+		# 对应层的固定方块个数加一
+		@numLayer[11 - point[2]] += 1
+		@numPlayed += 1
+		$("#value2").html @numPlayed
+		# 该层方块达到25,进行消除处理
+		if @numLayer[11 - point[2]] is 25
+			# 将要消除层的数组中加入该层
+			@removingLayer.push (11 - point[2])
+			@game.score += 100
+			if @game.score % 500 is 0
+				@game.level += 1
+			$("#value0").html @game.score
+			$("#value1").html @game.level
+
+	removeStableBlock: ->
+		# 对要移除层的数组进行排序，从井的顶部向底部移除，否则会出错
+		@removingLayer = @removingLayer.sort()
+
+		# 遍历数组，从后向前遍历，保证不会出错
+		for i in [(@removingLayer.length - 1)..0]
+			# 用临时变量保存层数
+			layer = @removingLayer[i]
+			# 删除该层每个固定方块
+			for block in @stableBlocks[layer]
+				@scene.remove block
+			# 从该层到井的顶部遍历，每层的固定方块，每格的状态，每层固定方块的个数都设为它上一层的，最后一层为初始值
+			for j in [layer...12]
+				if j != 11
+					@stableBlocks[j] = @stableBlocks[j + 1]
+					for block in @stableBlocks[j]
+						block.position.z -= 60
+					@points[j] = @points[j + 1]
+					@numLayer[j] = @numLayer[j + 1]
+				else 
+					@stableBlocks[j] = []
+					@points[j] = @points_empty
+					@numLayer[j] = 0
+			# 颜色也要循环设置为上一层的
+			color = @zColors[0]
+			for i in [0...11]
+				@zColors[i] = @zColors[i+1]
+			@zColors[11] = color
+		# 移除层的数组置空
+		@removingLayer = []
+
+# Block类，方块
+class Block
+	# 构造函数，一些参数的初始化
+	constructor: (@scene, @pit, @game)->
+		@move_time = 0 					# 移动是平滑移动
+		@step = 10 						# 每次移动的像素数
+		@drop_step = 60 				# 落下的速度
+		@rotate_time = 0 				# 旋转也是分几次小的旋转
+		@rotate_times = 6 				# 旋转90度时，每次旋转6次
+		@grid = 60
+		@collision_state = {none:0, wall:1, ground:2} 		# 碰撞检测的三种状态
+		# 用三维数组保存方块形状的信息，处于一个3*3*3的立方体中
+		@shapes = [
+			[
+				[0, 0, 0]
+			],
+			[
+				[0, 0, 0],
+				[0, 1, 0]
+			],
+			[
+				[0, 0, 0],
+				[0, -1, 0],
+				[0, 1, 0]
+			],
+			[
+				[0, 0, 0],
+				[0, 1, 0],
+				[1, 0, 0]
+			],
+			[
+				[0, 0, 0],
+				[1, 0, 0],
+				[0, 1, 0],
+				[1, 1, 0]
+			],
+			[
+				[0, 0, 0],
+				[0, 1, 0],
+				[1, 0, 0],
+				[0, -1, 0]
+			],
+			[
+				[0, 0, 0],
+				[1, 0, 0],
+				[1, 1, 0],
+				[0, -1, 0]
+			],
+			[
+				[0, 0, 0],
+				[0, -1, 0],
+				[0, 1, 0],
+				[1, -1, 0]
+			]
+		]
+		# 一个方块的形状
+		@shape = []
+
+	# 方块初始化
+	init: ->
+		grid = @grid
+		geometry = new THREE.CubeGeometry grid, grid, grid
+		material = new THREE.MeshLambertMaterial {color:0xFFFFFF * Math.random(), shading:THREE.FlatShading, overdraw:true, transparent: true, opacity:0.8}
+		kind = Math.floor Math.random() * 8
+		@kind = kind
+		# 初始化这个方块的形状的二维数组
+		for i in [0...@shapes[kind].length]
+			tmp = []
+			for j in [0...3]
+				tmp.push @shapes[kind][i][j]
+			@shape.push tmp
+
+		# 构建方块
+		for i in [1...@shape.length]
+			othergeo = new THREE.Mesh new THREE.CubeGeometry(grid, grid, grid)
+			othergeo.position.x = grid * @shape[i][0]
+			othergeo.position.y = grid * @shape[i][1]
+			THREE.GeometryUtils.merge geometry, othergeo
+			console.log "block #{i}"
+		@mesh = new THREE.Mesh geometry, material
+		@mesh.position.z = 270
+		@mesh.rotation.set 0, 0, 0
+		# 方块中心小cube的位置
+		@position = [0, 0, 1]
+		# 刚出来的时候就检测是否要失败了
+		if (@testCollision [0, 0, 1]) is @collision_state.ground
+			@game.gameOver = true
+			console.log "Game Over"
+		@scene.add @mesh
+
+	# 碰撞检测
+	testCollision: (dir)->
+		# posx，posy，posz保存移动以后的位置
+		[posx, posy, posz] = [@position[0] + dir[0], @position[1] + dir[1], @position[2] + dir[2]]
+		points = @pit.points
+		# 对移动以后的每个点进行判断，看碰撞的状态
+		for i in [0...@shape.length]
+			# 在墙外了
+			if @shape[i][0] + posx < -2 or @shape[i][0] + posx > 2 or @shape[i][1] + posy < -2 or @shape[i][1] + posy > 2
+				return @collision_state.wall
+			# 井底以下了
+			if @shape[i][2] + posz > 11
+				return @collision_state.ground
+
+			# 在井顶部以上了
+			if @shape[i][2] + posz < 0
+				return @collision_state.wall
+
+			# 对下边是固定方块的检测，分向下移动时当作碰到地处理，其余当作碰到墙
+			if points[11 - posz - @shape[i][2]][posx + @shape[i][0] + 2][posy + @shape[i][1] + 2] is @pit.state.stabled
+				if dir[2] != 0
+					return @collision_state.ground
+				else
+					return @collision_state.wall
+
+		return @collision_state.none
+
+	# 方块移动
+	move: (@dir_arr, dir)->
+		which = @collision_state.none
+		# 保存碰撞检测的结果
+		which = @testCollision @dir_arr
+		
+		# 对不同结果处理
+		switch which
+			# 无障碍时
+			when @collision_state.none
+				# 只有一次移动完了才进行下次移动
+				if @move_time is 0
+					# 向底部移动
+					if @dir_arr[2] != 0
+						@mesh.position.z -= @dir_arr[2] * @drop_step
+						@position[2] += @dir_arr[2]
+						# 碰到地，处理
+						if (@testCollision [0, 0, 1]) is @collision_state.ground
+							console.log "Hit ground"
+							@hitBottom()
+					# 其余四个方向，平滑移动
+					if @dir_arr[0] != 0 or @dir_arr[1] != 0
+						@moveInter = setInterval (=>
+							@move_time++
+							@moveOnce @dir_arr
+						), 1
+			# 碰到地，处理
+			when @collision_state.ground
+				@hitBottom()
+		console.log "Position #{@position[0]}, #{@position[1]}, #{@position[2]}"
+	# 慢慢移动，平滑效果
+	moveOnce: (dir)->
+		# 改变方块的显示位置
+		[@mesh.position.x, @mesh.position.y] = [@mesh.position.x + dir[0] * @step, @mesh.position.y + dir[1] * @step]
+		# 移动结束
+		if @move_time is @grid / @step
+			@move_time = 0
+			# 清除interval
+			clearInterval @moveInter
+			# 改变方块中央的位置
+			[@position[0], @position[1]] = [@position[0] + dir[0], @position[1] + dir[1]]
+
+	# 旋转
+	rotate: (x, y, z)->
+		# 先试着旋转
+		@rotateHelp x, y, z
+		# 测试看是否碰撞
+		which = @testCollision [0,0,0]
+		# 逆向旋转并对碰撞情况处理
+		if which != @collision_state.none
+			console.log "Hit sth"
+			@rotateHelp -x, -y, -z
+		else 
+			@rotateHelp -x, -y, -z
+			# 一次旋转结束再下次旋转
+			if @rotate_time is 0
+				@rotateInter = setInterval (=>
+					@rotate_time++
+					@rotateOnce x, y, z
+				), 1
+
+	# 绕world的axis旋转的方法
+	rotateAroundWorldAxis: (object, axis, radians)->
+		rotWorldMatrix = new THREE.Matrix4()
+		rotWorldMatrix.makeRotationAxis axis.normalize(), radians
+		rotWorldMatrix.multiplySelf object.matrix        # pre-multiply
+		object.matrix = rotWorldMatrix
+		object.rotation.getRotationFromMatrix object.matrix, object.scale
+		#delete rotWorldMatrix
+
+	# 慢慢旋转
+	rotateOnce: (x, y, z)->
+		# 绕着旋转的轴
+		axis = new THREE.Vector3 x, y, z
+		# 调用旋转方法
+		@rotateAroundWorldAxis @mesh, axis, Math.PI / @rotate_times / 2
+		# 旋转结束
+		if @rotate_time is @rotate_times
+			@rotate_time = 0
+			clearInterval @rotateInter
+			# 旋转后的处理
+			@rotateHelp(x, y, z)
+
+	# 旋转后改变shape数组
+	rotateHelp: (x, y, z)->
+		for i in [0...@shape.length]
+			vector = new THREE.Vector3 @shape[i][0], @shape[i][1], -@shape[i][2]
+			axis2 = new THREE.Vector3 x/90, y/90, z/90
+			matrix = new THREE.Matrix4().makeRotationAxis( axis2, Math.PI / 2 )
+			matrix.multiplyVector3 vector
+			vector.set Math.round(vector.x), Math.round(vector.y), Math.round(vector.z)
+			[@shape[i][0], @shape[i][1], @shape[i][2]] = [vector.x, vector.y, -vector.z]
+
+	# 碰到地的处理
+	hitBottom: ->
+		console.log "Hit Bottom"
+		# 把方块中每个小方块的位置添加到井中
+		for i in [0...@shape.length]
+			x = @position[0] + @shape[i][0]
+			y = @position[1] + @shape[i][1]
+			z = @position[2] + @shape[i][2]
+			@pit.addStableBlock [x, y, z]
+		mesh = @mesh
+		@scene.remove mesh
+		@shape = []
+		if @pit.removingLayer.length > 0
+			# 消除方块
+			@pit.removeStableBlock()
+		# 重新初始化
+		@init()
+
+
+root = exports ? window
+root.Game = Game
+
+game = new Game
+game.init()
+PAUSE = false
+
+# 点击Play之后的处理，包括一些标签的隐藏和显示，游戏的初始化，按键处理的添加
+$('#play')
+	.click(->
+		PAUSE = true
+		clearInterval game.animate
+	)
+	.click(-> $(".welcome").hide 1000)
+	.click(-> $(".play").show 1000)
+	.click(->
+		$('div.welcome').remove()
+		PAGE = 1
+		game.page = 1
+		game.init()
+		game.animate()
+		PAUSE = false
+		console.log "change done"
+	)
+	.click(->
+		$(document).keydown((e) ->
+			switch e.which
+				when 38 #UP
+					game.block.move [0, 1, 0], "+y"
+				when 40 #DOWN
+					game.block.move [0, -1, 0], "-y"
+				when 37 #LEFT
+					game.block.move [-1, 0, 0], "-x"
+				when 39 #RIGHT
+					game.block.move [1, 0, 0], "+x"
+				when 32 #SPACE
+					game.block.move [0, 0, 1], "z"
+				when 90 #Z
+					game.block.move [0, 0, -1]
+				when 81 #Q
+					game.block.rotate 0, 0, 90
+				when 87 #W
+					game.block.rotate -90, 0, 0
+				when 69 #E
+					game.block.rotate 0, 0, -90
+				when 65 #A
+					game.block.rotate 0, -90, 0
+				when 83 #S
+					game.block.rotate 90, 0, 0
+				when 68 #D
+					game.block.rotate 0, 90, 0
+				when 78 #N
+					game.camera.position.z -= 30
+				when 70 #F
+					game.camera.position.z += 30
+				else console.log "Keypress others"
+		)
+	)
+
+# 开始界面的鼠标移动对鸟的影响
+onDocumentMouseMove = (event) ->
+	switch game.page
+		when 0
+			vector = new THREE.Vector3 event.clientX - game.SCREEN_WIDTH_HALF - event.clientY + game.SCREEN_HEIGHT_HALF, 0
+			for boid in game.boids
+				vector.z = boid.position.z
+				boid.repulse vector
+
+document.addEventListener 'mousemove', onDocumentMouseMove, false
+
+game.animate()
+
+
+		</script>
+		
+	</body>
+</html>
