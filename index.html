@@ -38,6 +38,29 @@
 			<div class="keybar">Pit</div>
 			<div id="value4" class="valuebar"></div>
 		</div>
+		<div id="pause" class="area play noplay">
+			PAUSE
+		</div>
+		<div id="over" class="area play noplay">
+			Game Over
+			<div>Press F5 or ⌘ + R to restart.</div>
+		</div>
+		<div id="help" class="area circle play noplay">
+			?
+		</div>
+		<div id="helpContent" class="area play noplay">
+			<h1>Help</h1>
+			<p>Q W E A S D : Rotate</p>
+			<p>⬆ ⬇ ⬅ ➡ : Move </p>
+			<p>SPACE : Drop</p>
+			<p>P : Pause or Resume</p>
+			<p>H : Help or not</p>
+		</div>
+		<div id="intro" class = "play">
+			This is a version of the game Blockout -- 3D Tetris, which can be referred by this <a href="http://www.blockout.net" target="_blank">site</a> .<br>
+			The program is coded by <a href="http://coffeescript.org" target="_blank">coffeescript</a>,a little language that aims to give you easy access to the good parts of JavaScript.<br>
+			And a popular web 3D engine <a href="http://github.com/mrdoob/three.js" target="_blank">Three.js</a> is used to handle with WebGL.
+		</div>
 		<script type="text/coffeescript">
 
 # 游戏页面的变量
@@ -49,12 +72,7 @@ PAGE = 0
 class Game
 	# 构造函数，一些参数的初始化
 	constructor: ->
-		@gameOver = false
-		@level = 1
-		@page = 0 #开始页面和游戏中的页面
-		@score = 0
-		@cubesplayed = 0
-		@highscore = 0
+		#Interface Begin
 		@SCREEN_WIDTH = window.innerWidth # 浏览器窗口的宽度
 		@SCREEN_HEIGHT = window.innerHeight # 浏览器窗口的高度
 		@SCREEN_WIDTH_HALF = @SCREEN_WIDTH / 2 # 宽度的一半
@@ -62,19 +80,34 @@ class Game
 		@grid = 60 									# 一个格子的单位长度
 		@PLAY_HEIGHT = @grid * 10 					# 游戏区域的高度，十个格子
 		@PLAY_WIDTH = @grid * 10 					# 游戏区域的宽度
-		@camera = @scene = @renderer = null 		# 3D渲染的camera， scene， renderer
-		@birds = [] 								# 开始界面的鸟的数组
-		@boids = [] 								# 跟鸟飞行相关的
 		@aniInterval = null 						# 游戏循环的变量
 		clearInterval @aniInterval 					# 初始化时清除
 		@values = (0 for i in [0..4]) 				# 界面显示的几个数字，包括level，score等
 		@values[4] = "5*5*12"
+
+		@camera = @scene = @renderer = null 		# 3D渲染的camera， scene， renderer
+		@birds = [] 								# 开始界面的鸟的数组
+		@boids = [] 								# 跟鸟飞行相关的
+
+		#Interface End
+
+		#Logic
+		@gameOver = false
+		@level = 1
+		@page = 0 #开始页面和游戏中的页面
+		@score = 0
+		@cubesplayed = 0
+		@highscore = 0
+		@speedDropMax = 400
+		@speedDrop = 0
+		
 
 	# 初始化
 	init: ->			# initial before game
 		switch PAGE
 			# 开始界面的初始化
 			when 0
+				#Interface Begin
 				# 3D部分的初始化
 				@camera = new THREE.PerspectiveCamera 75, @SCREEN_WIDTH / @SCREEN_HEIGHT, 1, 10000
 				@scene = new THREE.Scene()
@@ -104,8 +137,11 @@ class Game
 					bird.doubleSided = true
 					@birds.push bird
 					@scene.add bird
+				#Interface End
+
 			# 游戏开始
 			when 1
+				#Interface Begin
 				# 纪录FPS(每秒刷新的次数)
 				@stats = new Stats
 				@stats.domElement.style.position = 'absolute'
@@ -127,15 +163,9 @@ class Game
 				for i in [0..4]
 					$("#value#{i}").html @values[i]
 				$("#value1").html @level
-				# 创建井(pit)的对象
-				@pit = new Pit @scene, this
-				# 创建方块的对象及初始化
-				@block = new Block @scene, @pit, this
-				@block.init()
 				# 漫反射的光
 				ambientLight = new THREE.AmbientLight Math.random() * 0x10
 				@scene.add ambientLight
-
 				# 四个点光源
 				pointLight = new THREE.PointLight 0xFFFFFF
 				pointLight2 = new THREE.PointLight 0xFFFFFF
@@ -149,20 +179,34 @@ class Game
 				@scene.add pointLight
 				@scene.add pointLight3
 				@scene.add pointLight4
+				#Interface End
+
+				# 创建井(pit)的对象
+				@pit = new Pit @scene, this
+				# 创建方块的对象及初始化
+				@block = new Block @scene, @pit, this
+				@block.init()
+				
 			else console.log "init error"
+	#Interface Begin
 	# 游戏循环
 	animate: ->
-		
 		clearInterval @aniInterval
-		#window.requestAnimationFrame =>@animate
 		# 每10毫秒执行一次
 		@aniInterval = setInterval (=>
 			# 执行渲染
+			if PAUSE
+				return console.log "PAUSE"
+			@speedDrop++
+			#console.log "speedDrop #{@speedDrop}"
+			if @speedDrop is @speedDropMax
+				console.log "Auto drop #{@speedDrop}"
+				@block.move [0, 0, 1]
+				@speedDrop = 0
 			@render()
 			# stats刷新
 			@stats.update() if @page is 1
 		), 10
-		
 
 	render: ->
 		if PAUSE
@@ -189,39 +233,34 @@ class Game
 			when 1
 				# 调用renderer的渲染函数render
 				@renderer.render @scene, @camera
+	#Interface End
+
 # Pit类 井 5*5*12
 class Pit
 	# 构造函数
 	constructor: (@scene, @game)->
 		# 注意：虽然canvas时600*600的，由于3D视角等关系，井实际是300*300*720, 60为一格
-		@gird = 60
-		@width = 300
-		@height = 300
-		@depth = 720
-		@splitX = 5
-		@splitY = 5
-		@splitZ = 12
-		@material = []
+		# Interface Begin
+		@gird = 60 					# 一个格子的单位长度
+		@width = 300				# 井的宽度
+		@height = 300				# 井的高度
+		@depth = 720 				# 井的深度
+		@splitX = 5 				# X方向的格子数
+		@splitY = 5 				# Y方向的格子数
+		@splitZ = 12 				# Z方向的格子数
 		@numPlayed = 0
 		@sides = {pz:false}
-		# 静止方块每一层的颜色
-		@zColors = [0x4433ff, 0x66ffff, 0xcc68EE, 0x666633, 0x66ff66, 0x9966ff, 0x00ff66, 0x66EE33, 0x003399, 0x330099, 0xFFA500, 0x99ff00, 0xee1289, 0x71C671, 0x00BFFF, 0x666633, 0x669966, 0x9966ff]
-		# 存放固定方块的数组
-		@stableBlocks = []
+		@zColors = [0x4433ff, 0x66ffff, 0xcc68EE, 0x666633, 0x66ff66, 0x9966ff, 0x00ff66, 0x66EE33, 0x003399, 0x330099, 0xFFA500, 0x99ff00, 0xee1289, 0x71C671, 0x00BFFF, 0x666633, 0x669966, 0x9966ff] 				# 固定方块每一层的颜色
+		@stableBlocks = [] 			# 存放固定方块的数组
 		for i in [0...12]
-			# 二维数组初始化
-			@stableBlocks.push []
-		# 保存将要被消去的方块的层数的数组
-		@removingLayer = []
+			@stableBlocks.push []	# 二维数组初始化
+		@removingLayer = []			# 保存将要被消去的方块的层数的数组
 		# 井的那个长方体
-		@cube = new THREE.Mesh(new THREE.CubeGeometry(@width, @height, @depth, @splitX, @splitY, @splitZ, @material, @sides), new THREE.MeshBasicMaterial({color:0xFFFFFF, wireframe:true, shading:THREE.SmoothShading, wireframeLinewidth: 2,}))
+		@cube = new THREE.Mesh(new THREE.CubeGeometry(@width, @height, @depth, @splitX, @splitY, @splitZ, [], @sides), new THREE.MeshBasicMaterial({color:0xFFFFFF, wireframe:true, shading:THREE.SmoothShading, wireframeLinewidth: 2,}))
 		@scene.add @cube
-		# 井的每个格子的状态，空或被固定方块占据
-		@state = {empty:0, stable:1}
-		# 每一层固定方块的个数，从底部到上部
-		@numLayer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-		# 保存井中每个点的状态，12*5*5的三维数组
-		@points = []
+		@state = {empty:0, stable:1} 							# 井的每个格子的状态，空或被固定方块占据
+		@numLayer = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] 		# 每一层固定方块的个数，从底部到上部
+		@points = [] 											# 保存井中每个点的状态，12*5*5的三维数组
 		for i in [0...12]
 			tmp1 = []
 			for j in [0...5]
@@ -259,6 +298,8 @@ class Pit
 			@game.score += 100
 			if @game.score % 500 is 0
 				@game.level += 1
+				@game.speedDropMax -= 50
+				@game.speedDropMax = 100 if @game.speedDropMax < 100
 			$("#value0").html @game.score
 			$("#value1").html @game.level
 
@@ -275,21 +316,19 @@ class Pit
 				@scene.remove block
 			# 从该层到井的顶部遍历，每层的固定方块，每格的状态，每层固定方块的个数都设为它上一层的，最后一层为初始值
 			for j in [layer...12]
+				color = @zColors[layer]
 				if j != 11
 					@stableBlocks[j] = @stableBlocks[j + 1]
 					for block in @stableBlocks[j]
 						block.position.z -= 60
 					@points[j] = @points[j + 1]
 					@numLayer[j] = @numLayer[j + 1]
+					@zColors[j] = @zColors[j + 1]
 				else 
 					@stableBlocks[j] = []
 					@points[j] = @points_empty
 					@numLayer[j] = 0
-			# 颜色也要循环设置为上一层的
-			color = @zColors[0]
-			for i in [0...11]
-				@zColors[i] = @zColors[i+1]
-			@zColors[11] = color
+					@zColors[j] = color
 		# 移除层的数组置空
 		@removingLayer = []
 
@@ -303,7 +342,7 @@ class Block
 		@rotate_time = 0 				# 旋转也是分几次小的旋转
 		@rotate_times = 6 				# 旋转90度时，每次旋转6次
 		@grid = 60
-		@collision_state = {none:0, wall:1, ground:2} 		# 碰撞检测的三种状态
+		@collision_state = none:0, wall:1, ground:2 		# 碰撞检测的三种状态
 		# 用三维数组保存方块形状的信息，处于一个3*3*3的立方体中
 		@shapes = [
 			[
@@ -353,6 +392,8 @@ class Block
 
 	# 方块初始化
 	init: ->
+		if @game.gameOver
+			return console.log "Game Over"
 		grid = @grid
 		geometry = new THREE.CubeGeometry grid, grid, grid
 		material = new THREE.MeshLambertMaterial {color:0xFFFFFF * Math.random(), shading:THREE.FlatShading, overdraw:true, transparent: true, opacity:0.8}
@@ -370,17 +411,25 @@ class Block
 			othergeo = new THREE.Mesh new THREE.CubeGeometry(grid, grid, grid)
 			othergeo.position.x = grid * @shape[i][0]
 			othergeo.position.y = grid * @shape[i][1]
+			othergeo.position.z = grid * @shape[i][2]
 			THREE.GeometryUtils.merge geometry, othergeo
-			console.log "block #{i}"
 		@mesh = new THREE.Mesh geometry, material
-		@mesh.position.z = 270
+		@mesh.position.z = 330
 		@mesh.rotation.set 0, 0, 0
 		# 方块中心小cube的位置
-		@position = [0, 0, 1]
+		@position = [0, 0, 0]
 		# 刚出来的时候就检测是否要失败了
 		if (@testCollision [0, 0, 1]) is @collision_state.ground
 			@game.gameOver = true
 			console.log "Game Over"
+			target = opacity: 0.2
+			target2 = opacity: 1
+			$('#over').removeClass 'play'
+			$('.noplay').removeClass 'play'
+			$('.play').animate target, 1000
+			$('#help').animate {opacity:0.2}, 1
+			$('.noplay').addClass 'play'
+			$('#over').animate target2, 100
 		@scene.add @mesh
 
 	# 碰撞检测
@@ -411,10 +460,11 @@ class Block
 		return @collision_state.none
 
 	# 方块移动
-	move: (@dir_arr, dir)->
+	move: (dir_arr)->
+		if PAUSE
+			return console.log "PAUSE"
 		which = @collision_state.none
-		# 保存碰撞检测的结果
-		which = @testCollision @dir_arr
+		which = @testCollision dir_arr 					# 保存碰撞检测的结果
 		
 		# 对不同结果处理
 		switch which
@@ -423,23 +473,24 @@ class Block
 				# 只有一次移动完了才进行下次移动
 				if @move_time is 0
 					# 向底部移动
-					if @dir_arr[2] != 0
-						@mesh.position.z -= @dir_arr[2] * @drop_step
-						@position[2] += @dir_arr[2]
+					if dir_arr[2] != 0
+						@mesh.position.z -= dir_arr[2] * @drop_step
+						@position[2] += dir_arr[2]
 						# 碰到地，处理
 						if (@testCollision [0, 0, 1]) is @collision_state.ground
 							console.log "Hit ground"
 							@hitBottom()
 					# 其余四个方向，平滑移动
-					if @dir_arr[0] != 0 or @dir_arr[1] != 0
+					if dir_arr[0] != 0 or dir_arr[1] != 0
 						@moveInter = setInterval (=>
 							@move_time++
-							@moveOnce @dir_arr
+							@moveOnce dir_arr
 						), 1
 			# 碰到地，处理
 			when @collision_state.ground
 				@hitBottom()
 		console.log "Position #{@position[0]}, #{@position[1]}, #{@position[2]}"
+
 	# 慢慢移动，平滑效果
 	moveOnce: (dir)->
 		# 改变方块的显示位置
@@ -454,6 +505,8 @@ class Block
 
 	# 旋转
 	rotate: (x, y, z)->
+		if PAUSE
+			return console.log "PAUSE"
 		# 先试着旋转
 		@rotateHelp x, y, z
 		# 测试看是否碰撞
@@ -521,14 +574,29 @@ class Block
 		# 重新初始化
 		@init()
 
-
-root = exports ? window
-root.Game = Game
-
 game = new Game
 game.init()
 PAUSE = false
-
+HELP = false
+helpHandle = ->
+	if game.gameOver
+		return console.log "Game Over"
+	if HELP
+		$('.noplay').removeClass 'play'
+		$('.play').animate {opacity:1}, 100
+		$('.noplay').addClass 'play'
+		$('#helpContent').animate {opacity:0}, 100
+		HELP = false
+		PAUSE = false
+	else
+		if PAUSE
+			return console.log "PAUSE"
+		$('.noplay').removeClass 'play'
+		$('.play').animate {opacity:0.2}, 100
+		$('.noplay').addClass 'play'
+		$('#helpContent').animate {opacity:1}, 100
+		HELP = true
+		PAUSE = true
 # 点击Play之后的处理，包括一些标签的隐藏和显示，游戏的初始化，按键处理的添加
 $('#play')
 	.click(->
@@ -545,20 +613,23 @@ $('#play')
 		game.animate()
 		PAUSE = false
 		console.log "change done"
+		$('#help').click(->
+			helpHandle()
+		)
 	)
 	.click(->
 		$(document).keydown((e) ->
 			switch e.which
 				when 38 #UP
-					game.block.move [0, 1, 0], "+y"
+					game.block.move [0, 1, 0]
 				when 40 #DOWN
-					game.block.move [0, -1, 0], "-y"
+					game.block.move [0, -1, 0]
 				when 37 #LEFT
-					game.block.move [-1, 0, 0], "-x"
+					game.block.move [-1, 0, 0]
 				when 39 #RIGHT
-					game.block.move [1, 0, 0], "+x"
+					game.block.move [1, 0, 0]
 				when 32 #SPACE
-					game.block.move [0, 0, 1], "z"
+					game.block.move [0, 0, 1]
 				when 90 #Z
 					game.block.move [0, 0, -1]
 				when 81 #Q
@@ -577,6 +648,27 @@ $('#play')
 					game.camera.position.z -= 30
 				when 70 #F
 					game.camera.position.z += 30
+				when 72 #H
+					helpHandle()
+				when 80 #P
+					if HELP
+						return console.log "HELP"
+					if PAUSE
+						PAUSE = false
+						$('#pause').addClass 'play'
+						$('.noplay').removeClass 'play'
+						$('.play').animate {opacity:1}, 100
+						$('#help').animate {opacity:1}, 100
+						$('.noplay').addClass 'play'
+						$('#pause').animate {opacity:0}, 100
+					else
+						PAUSE = true
+						$('#pause').removeClass 'play'
+						$('.noplay').removeClass 'play'
+						$('.play').animate {opacity:0.2}, 100
+						$('#help').animate {opacity:0.2}, 100
+						$('.noplay').addClass 'play'
+						$('#pause').animate {opacity:1}, 100
 				else console.log "Keypress others"
 		)
 	)

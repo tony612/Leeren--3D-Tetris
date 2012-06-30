@@ -31,12 +31,9 @@ h1.play{
 	color:#ffffff;
 	position: absolute;
 	top:60px;
-	left:0px;
+	left:10px;
 }
 
-.show {
-
-}
 .play {
 	display:none;
 }
@@ -64,14 +61,96 @@ h1.play{
 	
 }
 
-#level {
-	
-}
-
 .valuebar {
 	color:#ffffff;
 	font-size:45px;
 	text-align:center;
 	height:69px;
 	margin-top: 10px;
+}
+
+.hide {
+	display: none;
+}
+
+#over {
+	position: absolute;
+	left:485px;
+	top:270px;
+	color: #ffffff;
+	font-size:120px;
+	opacity: 0;
+	text-align:center;
+	padding: 0px 20px;
+}
+
+#over div {
+	font-size:20px;
+	margin: -30px 0px 10px 0px;
+	padding: 0px;
+}
+
+#pause {
+	position: absolute;
+	left:485px;
+	top:270px;
+	color: #ffffff;
+	font-size:120px;
+	padding: 20px 0px 0px 0px;
+	opacity: 0;
+	text-align:center;
+}
+
+#help {
+	position: absolute;
+	left:360px;
+	top:35px;
+	color: #ffffff;
+	font-size:30px;
+	padding: 9px 10px 3px 10px;
+}
+
+#help:hover{
+	font-size:40px;
+}
+.circle {
+	border-radius:30px;
+}
+
+#helpContent {
+	position: absolute;
+	top:60px;
+	left:490px;
+	color: #ffffff;
+	font-size:50px;
+	text-align:center;
+	opacity: 0;
+	-moz-opacity: 0;
+	filter:alpha(opacity=0);
+}
+
+#helpContent h1{
+	margin: 30px 0px 0px 0px;
+}
+
+#helpContent p {
+	margin: 20px 10px 20px 10px;
+}
+
+#intro {
+	width:350px;
+	position: absolute;
+	top:300px;
+	left:10px;
+	color: #ffffff;
+	font-size:20px;
+}
+
+#intro a {
+	color: #ff0000;
+	font-size:30px;
+}
+
+#intro a:hover{
+	
 }
